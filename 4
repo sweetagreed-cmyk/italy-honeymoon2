@@ -1,0 +1,314 @@
+// src/types/journal.ts
+export interface JournalPost {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  content: string;
+  images: string[];
+  date: string;       // 旅遊的第幾天或具體日期
+  timestamp: any;    // Firestore ServerTimestamp
+}
+
+// src/features/journal/journalService.ts
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+
+export const subscribeJournals = (callback: (data: any[]) => void) => {
+  const q = query(collection(db, 'journals'), orderBy('timestamp', 'desc'));
+  return onSnapshot(q, (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  });
+};
+
+export const addJournal = async (post: Omit<JournalPost, 'id' | 'timestamp'>) => {
+  return await addDoc(collection(db, 'journals'), {
+    ...post,
+    timestamp: serverTimestamp()
+  });
+};
+import React from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faHeart, faComment, faShare } from '@fortawesome/free-solid-svg-icons';
+
+const JournalCard: React.FC<{ post: any }> = ({ post }) => {
+  return (
+    <div className="bg-white rounded-[2rem] shadow-sticker border-2 border-sand overflow-hidden mb-8 transform rotate-1">
+      {/* 作者資訊 */}
+      <div className="p-4 flex items-center gap-3">
+        <img src={post.userAvatar} className="w-10 h-10 rounded-full border-2 border-primary-light" alt="avatar" />
+        <div>
+          <h4 className="font-black text-text-main text-sm">{post.userName}</h4>
+          <p className="text-[10px] text-text-light font-bold uppercase">{post.date}</p>
+        </div>
+      </div>
+
+      {/* 多圖輪播 (Horizontal Scroll Snap) */}
+      <div className="relative">
+        <div className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar bg-sand/20">
+          {post.images.map((img: string, i: number) => (
+            <div key={i} className="flex-shrink-0 w-full snap-center p-2">
+              <div className="aspect-square rounded-2xl overflow-hidden bg-white shadow-inner">
+                <img src={img} className="w-full h-full object-cover" alt="travel" />
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* 圖片指示標籤 */}
+        {post.images.length > 1 && (
+          <div className="absolute bottom-4 right-6 bg-black/50 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-sm">
+            1 / {post.images.length}
+          </div>
+        )}
+      </div>
+
+      {/* 內容區 */}
+      <div className="p-6">
+        <p className="text-text-main font-medium leading-relaxed mb-4">
+          {post.content}
+        </p>
+        
+        {/* 互動按鈕 */}
+        <div className="flex items-center gap-6 text-text-light">
+          <button className="flex items-center gap-2 hover:text-accent transition-colors btn-active-scale">
+            <FontAwesomeIcon icon={faHeart} /> <span className="text-xs font-bold">12</span>
+          </button>
+          <button className="flex items-center gap-2 hover:text-primary transition-colors btn-active-scale">
+            <FontAwesomeIcon icon={faComment} /> <span className="text-xs font-bold">回覆</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+import React, { useState } from 'react';
+import { uploadActivityImage } from '../../utils/imageUpload'; // 延用之前的壓縮工具
+
+const AddJournalModal: React.FC<{ user: any, onClose: () => void }> = ({ user, onClose }) => {
+  const [content, setContent] = useState('');
+  const [images, setImages] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      setImages(prev => [...prev, ...files]);
+      const newPreviews = files.map(file => URL.createObjectURL(file));
+      setPreviews(prev => [...prev, ...newPreviews]);
+    }
+  };
+
+  const handlePublish = async () => {
+    setIsUploading(true);
+    try {
+      // 1. 上傳所有圖片到 Storage
+      const imageUrls = await Promise.all(
+        images.map(img => uploadActivityImage('journals', img))
+      );
+      
+      // 2. 儲存到 Firestore
+      await addJournal({
+        userId: user.uid,
+        userName: user.displayName || '匿名旅伴',
+        userAvatar: user.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucky',
+        content,
+        images: imageUrls,
+        date: 'Day 3 in Tokyo',
+      });
+      onClose();
+    } catch (e) {
+      alert("發布失敗");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-background p-6 flex flex-col animate-in fade-in">
+      <div className="flex justify-between items-center mb-8">
+        <button onClick={onClose} className="font-bold text-text-light px-4 py-2">取消</button>
+        <h2 className="text-xl font-black text-primary-dark tracking-tighter">寫日誌 ✨</h2>
+        <button 
+          onClick={handlePublish}
+          disabled={isUploading || !content}
+          className={`px-6 py-2 rounded-full font-black text-white shadow-sticker btn-active-scale ${isUploading ? 'bg-sand' : 'bg-primary'}`}
+        >
+          {isUploading ? '上傳中...' : '分享'}
+        </button>
+      </div>
+
+      <textarea 
+        className="flex-1 w-full bg-transparent text-xl font-medium focus:outline-none placeholder:text-sand italic"
+        placeholder="這一刻的心情是..."
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+      />
+
+      {/* 圖片預覽區 */}
+      <div className="flex gap-4 overflow-x-auto py-4 no-scrollbar">
+        <label className="flex-shrink-0 w-24 h-24 rounded-2xl border-4 border-dashed border-sand flex items-center justify-center text-sand cursor-pointer">
+          <input type="file" multiple className="hidden" onChange={handleFileChange} />
+          <span className="text-3xl">+</span>
+        </label>
+        {previews.map((src, i) => (
+          <img key={i} src={src} className="w-24 h-24 rounded-2xl object-cover shadow-sm border-2 border-white" alt="preview" />
+        ))}
+      </div>
+    </div>
+  );
+};
+// src/types/planning.ts
+export interface PackingItem {
+  id: string;
+  text: string;
+  category: 'essentials' | 'clothing' | 'electronics' | 'toiletries' | 'others';
+  isChecked: boolean;
+  assignedTo?: string; // 成員 ID
+}
+
+// src/features/planning/planningService.ts
+import { collection, doc, updateDoc, deleteDoc, onSnapshot, addDoc, query } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+
+const COLLECTION = 'packingList';
+
+export const subscribePackingList = (callback: (data: PackingItem[]) => void) => {
+  const q = query(collection(db, COLLECTION));
+  return onSnapshot(q, (snapshot) => {
+    callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PackingItem)));
+  });
+};
+
+export const toggleItemCheck = async (id: string, currentState: boolean) => {
+  return await updateDoc(doc(db, COLLECTION, id), { isChecked: !currentState });
+};
+
+export const addPackingItem = async (item: Omit<PackingItem, 'id'>) => {
+  return await addDoc(collection(db, COLLECTION), item);
+};
+import React, { useState, useEffect } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faCheck, faPlus, faSuitcaseRolling, faTrashCan } from '@fortawesome/free-solid-svg-icons';
+import { subscribePackingList, toggleItemCheck, addPackingItem } from './planningService';
+
+const CATEGORIES = [
+  { id: 'essentials', label: '必備', icon: '🎫' },
+  { id: 'clothing', label: '衣物', icon: '👕' },
+  { id: 'electronics', label: '電器', icon: '🔌' },
+  { id: 'toiletries', label: '盥洗', icon: '🪥' },
+];
+
+const PackingPage: React.FC = () => {
+  const [items, setItems] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState('essentials');
+  const [newItemText, setNewItemText] = useState('');
+
+  useEffect(() => {
+    const unsubscribe = subscribePackingList(setItems);
+    return () => unsubscribe();
+  }, []);
+
+  const progress = items.length > 0 
+    ? Math.round((items.filter(i => i.isChecked).length / items.length) * 100) 
+    : 0;
+
+  const handleAddItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItemText.trim()) return;
+    await addPackingItem({
+      text: newItemText,
+      category: activeTab as any,
+      isChecked: false
+    });
+    setNewItemText('');
+  };
+
+  return (
+    <div className="pb-24 pt-6 px-4 min-h-screen">
+      <header className="mb-6 px-2">
+        <h1 className="text-3xl font-black text-primary-dark">準備清單</h1>
+        <p className="text-text-light text-sm font-bold">檢查一下行李，別漏掉東西囉！</p>
+      </header>
+
+      {/* 進度顯示卡片 */}
+      <div className="card-base mb-8 bg-gradient-to-br from-white to-[#F9F7F0]">
+        <div className="flex justify-between items-center mb-3">
+          <span className="font-black text-text-main">準備進度</span>
+          <span className="font-black text-primary text-xl">{progress}%</span>
+        </div>
+        <div className="w-full h-4 bg-sand/30 rounded-full overflow-hidden border border-sand">
+          <div 
+            className="h-full bg-primary transition-all duration-500 ease-out" 
+            style={{ width: `${progress}%` }}
+          ></div>
+        </div>
+        <p className="text-[10px] text-text-light mt-3 font-bold italic">
+          <FontAwesomeIcon icon={faSuitcaseRolling} className="mr-1" />
+          {progress === 100 ? '太棒了！行李已準備就緒！' : '加油！還有東西沒帶喔～'}
+        </p>
+      </div>
+
+      {/* 分類切換索引 (手帳貼紙感) */}
+      <div className="flex gap-2 mb-6 overflow-x-auto no-scrollbar py-2">
+        {CATEGORIES.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setActiveTab(cat.id)}
+            className={`flex-shrink-0 px-5 py-2 rounded-full font-black text-sm transition-all btn-active-scale border-2 ${
+              activeTab === cat.id 
+                ? 'bg-primary text-white border-primary shadow-sticker' 
+                : 'bg-white text-text-light border-sand'
+            }`}
+          >
+            {cat.icon} {cat.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 新增物品輸入框 */}
+      <form onSubmit={handleAddItem} className="mb-6 flex gap-2">
+        <input 
+          type="text"
+          value={newItemText}
+          onChange={(e) => setNewItemText(e.target.value)}
+          placeholder={`新增${CATEGORIES.find(c => c.id === activeTab)?.label}物品...`}
+          className="flex-1 bg-white border-2 border-sand rounded-2xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-primary shadow-sm"
+        />
+        <button className="bg-accent text-white w-12 h-12 rounded-2xl shadow-sticker btn-active-scale flex items-center justify-center">
+          <FontAwesomeIcon icon={faPlus} />
+        </button>
+      </form>
+
+      {/* 清單列表 */}
+      <div className="space-y-3">
+        {items.filter(i => i.category === activeTab).map(item => (
+          <div 
+            key={item.id}
+            onClick={() => toggleItemCheck(item.id, item.isChecked)}
+            className={`card-base flex items-center gap-4 transition-all cursor-pointer ${
+              item.isChecked ? 'opacity-60 bg-sand/10 border-transparent' : ''
+            }`}
+          >
+            {/* 自定義 Checkbox */}
+            <div className={`w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all ${
+              item.isChecked ? 'bg-primary border-primary' : 'bg-white border-sand'
+            }`}>
+              {item.isChecked && <FontAwesomeIcon icon={faCheck} className="text-white text-sm" />}
+            </div>
+
+            <span className={`flex-1 font-bold text-text-main ${item.isChecked ? 'line-through text-text-light' : ''}`}>
+              {item.text}
+            </span>
+
+            {item.isChecked && (
+              <div className="text-[10px] font-black text-primary px-2 py-1 bg-primary/10 rounded-md">
+                DONE
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};

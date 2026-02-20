@@ -1,0 +1,213 @@
+import React, { useState } from 'react';
+
+interface Props {
+  onSuccess: () => void;
+  onClose: () => void;
+}
+
+const PinLock: React.FC<Props> = ({ onSuccess, onClose }) => {
+  const [pin, setPin] = useState('');
+  const CORRECT_PIN = "007"; // 預設 PIN
+
+  const handleNumberClick = (num: string) => {
+    if (pin.length < 3) {
+      const newPin = pin + num;
+      setPin(newPin);
+      if (newPin === CORRECT_PIN) {
+        setTimeout(onSuccess, 300);
+      } else if (newPin.length === 3) {
+        setTimeout(() => setPin(''), 500); // 輸錯閃爍後清空
+      }
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-primary/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-white">
+      <h3 className="text-xl font-black mb-8 italic">請輸入解鎖密碼</h3>
+      
+      {/* 密碼顯示點 */}
+      <div className="flex gap-4 mb-12">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className={`w-4 h-4 rounded-full border-2 border-white transition-all ${pin.length > i ? 'bg-white scale-125' : 'bg-transparent'}`} />
+        ))}
+      </div>
+
+      {/* 數字鍵盤 */}
+      <div className="grid grid-cols-3 gap-6">
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'X'].map((val) => (
+          <button
+            key={val}
+            onClick={() => {
+              if (val === 'C') setPin('');
+              else if (val === 'X') onClose();
+              else handleNumberClick(val);
+            }}
+            className="w-16 h-16 rounded-full bg-white/20 hover:bg-white/40 flex items-center justify-center text-2xl font-black btn-active-scale"
+          >
+            {val}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+import React from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faPlane } from '@fortawesome/free-solid-svg-icons';
+
+interface FlightProps {
+  flight: {
+    airline: string;
+    flightNumber: string;
+    from: string;
+    to: string;
+    departs: string;
+    gate: string;
+    seat: string;
+    confCode: string;
+  };
+  isLocked: boolean;
+  onUnlock: () => void;
+}
+
+const FlightCard: React.FC<FlightProps> = ({ flight, isLocked, onUnlock }) => {
+  return (
+    <div className="relative w-full filter drop-shadow-sticker transition-all hover:-translate-y-1">
+      {/* 上半部：航班資訊 */}
+      <div className="bg-white rounded-t-3xl p-6 border-b-2 border-dashed border-sand relative overflow-hidden">
+        {/* 裝飾用的圓形切口 (左) */}
+        <div className="absolute -bottom-3 -left-3 w-6 h-6 bg-background rounded-full border-2 border-sand"></div>
+        {/* 裝飾用的圓形切口 (右) */}
+        <div className="absolute -bottom-3 -right-3 w-6 h-6 bg-background rounded-full border-2 border-sand"></div>
+        
+        <div className="flex justify-between items-center mb-6">
+          <span className="font-black text-primary uppercase tracking-tighter text-lg">{flight.airline}</span>
+          <div className="bg-primary/10 text-primary px-3 py-1 rounded-full text-xs font-bold">
+            {flight.flightNumber}
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center px-2">
+          <div className="text-center">
+            <h4 className="text-4xl font-black text-text-main leading-none">{flight.from}</h4>
+            <p className="text-[10px] text-text-light font-bold mt-1 uppercase">Departure</p>
+          </div>
+          <div className="flex flex-col items-center flex-1 px-4">
+            <div className="w-full border-t-2 border-sand relative">
+              <FontAwesomeIcon icon={faPlane} className="absolute -top-2 left-1/2 -translate-x-1/2 text-sand" />
+            </div>
+          </div>
+          <div className="text-center">
+            <h4 className="text-4xl font-black text-text-main leading-none">{flight.to}</h4>
+            <p className="text-[10px] text-text-light font-bold mt-1 uppercase">Arrival</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 下半部：詳細資訊與撕票效果 */}
+      <div className="bg-white rounded-b-3xl p-6 flex justify-between items-end border-t-0 border-2 border-sand">
+        <div className="grid grid-cols-3 gap-8 w-full">
+          <div>
+            <p className="text-[10px] text-text-light font-bold uppercase mb-1">Time</p>
+            <p className="font-black text-text-main">{flight.departs}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-text-light font-bold uppercase mb-1">Gate</p>
+            <p className="font-black text-text-main">{flight.gate}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-text-light font-bold uppercase mb-1">Seat</p>
+            <p className="font-black text-text-main">{flight.seat}</p>
+          </div>
+        </div>
+
+        {/* 隱私資訊區 */}
+        <div className="absolute right-6 bottom-6 flex flex-col items-end">
+          <p className="text-[10px] text-text-light font-bold uppercase mb-1 text-right">Confirmation</p>
+          {isLocked ? (
+            <button 
+              onClick={onUnlock}
+              className="bg-accent/10 text-accent px-3 py-1 rounded-lg text-xs font-black border-2 border-accent/20 btn-active-scale"
+            >
+              點擊解鎖 PIN
+            </button>
+          ) : (
+            <p className="font-mono font-black text-xl text-accent animate-pulse">{flight.confCode}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+import React, { useState } from 'react';
+import FlightCard from './FlightCard';
+import PinLock from './PinLock';
+
+const BookingsPage: React.FC = () => {
+  const [isPinVisible, setIsPinVisible] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+
+  const mockFlight = {
+    airline: "Japan Airlines",
+    flightNumber: "JL802",
+    from: "TPE",
+    to: "NRT",
+    departs: "10:00",
+    gate: "D6",
+    seat: "22K",
+    confCode: "XJ928S"
+  };
+
+  return (
+    <div className="pb-24 pt-6 px-4 min-h-screen space-y-8">
+      <header className="px-2">
+        <h1 className="text-3xl font-black text-primary-dark">我的預訂</h1>
+        <p className="text-text-light text-sm font-bold">所有憑證與機票都在這裡</p>
+      </header>
+
+      {/* 機票分類 */}
+      <section className="space-y-4">
+        <h3 className="flex items-center gap-2 text-text-main font-black ml-2">
+          <span className="w-2 h-6 bg-accent rounded-full"></span> 航班資訊
+        </h3>
+        <FlightCard 
+          flight={mockFlight} 
+          isLocked={!isUnlocked} 
+          onUnlock={() => setIsPinVisible(true)} 
+        />
+      </section>
+
+      {/* 住宿卡片 (簡化版) */}
+      <section className="space-y-4">
+        <h3 className="flex items-center gap-2 text-text-main font-black ml-2">
+          <span className="w-2 h-6 bg-primary rounded-full"></span> 住宿安排
+        </h3>
+        <div className="card-base flex gap-4">
+          <div className="w-24 h-24 bg-sand rounded-xl overflow-hidden flex-shrink-0">
+            <img src="https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=200" className="w-full h-full object-cover" />
+          </div>
+          <div className="flex-grow">
+            <h4 className="font-black text-text-main uppercase">Shinjuku Prince Hotel</h4>
+            <p className="text-xs text-text-light font-bold mt-1 italic italic">Check-in: 15:00</p>
+            <div className="mt-4 flex justify-between items-center">
+              <span className="text-primary font-black">NT$ 12,400</span>
+              <span className="text-[10px] bg-sand px-2 py-1 rounded-md font-bold text-text-light tracking-tighter">每人約 $4,133</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* PIN 碼遮罩 */}
+      {isPinVisible && (
+        <PinLock 
+          onSuccess={() => {
+            setIsUnlocked(true);
+            setIsPinVisible(false);
+          }}
+          onClose={() => setIsPinVisible(false)}
+        />
+      )}
+    </div>
+  );
+};

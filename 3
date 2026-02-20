@@ -1,0 +1,233 @@
+// src/types/expense.ts
+export interface Expense {
+  id: string;
+  title: string;
+  amount: number;       // 原始金額 (例如日幣)
+  currency: 'JPY' | 'TWD' | 'USD';
+  amountTWD: number;    // 自動換算後的台幣
+  category: 'food' | 'shopping' | 'transport' | 'other';
+  payerId: string;      // 誰付的錢
+  splitWith: string[];  // 哪些成員分攤
+  date: string;
+}
+
+// src/features/expense/expenseService.ts
+import { collection, addDoc, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { db } from '../../config/firebase';
+
+export const addExpense = async (userId: string, expense: Omit<Expense, 'id'>) => {
+  return await addDoc(collection(db, 'expenses'), {
+    ...expense,
+    userId,
+    createdAt: new Date(),
+  });
+};
+// src/features/expense/AddExpenseModal.tsx
+import React, { useState } from 'react';
+
+const CATEGORIES = [
+  { id: 'food', label: '美食', icon: '🍱', color: 'bg-orange-100' },
+  { id: 'transport', label: '交通', icon: '🚃', color: 'bg-blue-100' },
+  { id: 'shopping', label: '購物', icon: '🛍️', color: 'bg-pink-100' },
+  { id: 'other', label: '其他', icon: '✨', color: 'bg-green-100' },
+];
+
+const AddExpenseModal: React.FC<{ onClose: () => void, onAdd: (data: any) => void }> = ({ onClose, onAdd }) => {
+  const [amount, setAmount] = useState('0');
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('food');
+  const [currency, setCurrency] = useState<'JPY' | 'TWD'>('JPY');
+  
+  const EXCHANGE_RATE = 0.22; // 假設匯率：1 日幣 = 0.22 台幣
+
+  const handleNumClick = (num: string) => {
+    if (amount === '0') setAmount(num);
+    else setAmount(prev => prev + num);
+  };
+
+  const handleDelete = () => {
+    if (amount.length > 1) setAmount(prev => prev.slice(0, -1));
+    else setAmount('0');
+  };
+
+  const handleSubmit = () => {
+    const numAmount = parseFloat(amount);
+    onAdd({
+      title: title || '未命名支出',
+      amount: numAmount,
+      currency,
+      amountTWD: currency === 'JPY' ? Math.round(numAmount * EXCHANGE_RATE) : numAmount,
+      category,
+      date: new Date().toISOString().split('T')[0]
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] bg-black/40 backdrop-blur-sm flex items-end justify-center">
+      <div className="bg-background w-full max-w-md rounded-t-[3rem] p-8 shadow-2xl animate-in slide-in-from-bottom duration-300">
+        {/* 金額顯示區 */}
+        <div className="text-center mb-6">
+          <div className="flex justify-center items-baseline gap-2">
+            <select 
+              value={currency} 
+              onChange={(e) => setCurrency(e.target.value as any)}
+              className="bg-sand/30 font-black px-2 py-1 rounded-lg text-primary"
+            >
+              <option value="JPY">JPY ¥</option>
+              <option value="TWD">TWD $</option>
+            </select>
+            <span className="text-5xl font-black text-text-main tracking-tighter">{amount}</span>
+          </div>
+          {currency === 'JPY' && (
+            <p className="text-text-light text-sm font-bold mt-2">
+              約合台幣 ${Math.round(parseFloat(amount) * EXCHANGE_RATE)}
+            </p>
+          )}
+        </div>
+
+        {/* 輸入欄位 */}
+        <input 
+          type="text" placeholder="這筆錢花在哪？" 
+          className="w-full mb-6 bg-white border-2 border-sand rounded-2xl px-4 py-3 text-center font-bold focus:outline-none focus:border-primary"
+          value={title} onChange={(e) => setTitle(e.target.value)}
+        />
+
+        {/* 分類選擇 */}
+        <div className="grid grid-cols-4 gap-3 mb-8">
+          {CATEGORIES.map(cat => (
+            <button 
+              key={cat.id}
+              onClick={() => setCategory(cat.id)}
+              className={`flex flex-col items-center p-3 rounded-2xl border-2 transition-all ${
+                category === cat.id ? 'border-primary bg-primary/10' : 'border-transparent bg-white shadow-sm'
+              }`}
+            >
+              <span className="text-2xl mb-1">{cat.icon}</span>
+              <span className="text-[10px] font-bold text-text-light">{cat.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* 數字鍵盤 */}
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {['1','2','3','4','5','6','7','8','9','00','0','⌫'].map(key => (
+            <button
+              key={key}
+              onClick={() => key === '⌫' ? handleDelete() : handleNumClick(key)}
+              className="h-14 bg-white rounded-xl font-black text-xl text-text-main shadow-sticker border border-sand btn-active-scale"
+            >
+              {key}
+            </button>
+          ))}
+        </div>
+
+        <button 
+          onClick={handleSubmit}
+          className="w-full py-5 bg-primary text-white font-black rounded-2xl shadow-sticker text-xl btn-active-scale"
+        >
+          記下一筆
+        </button>
+        <button onClick={onClose} className="w-full mt-4 text-text-light font-bold text-sm">先不用</button>
+      </div>
+    </div>
+  );
+};
+import React, { useState, useEffect } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faWallet, faChartLine, faPlus } from '@fortawesome/free-solid-svg-icons';
+import AddExpenseModal from './AddExpenseModal';
+
+const ExpensePage: React.FC = () => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [expenses, setExpenses] = useState<any[]>([]);
+  
+  const totalJPY = expenses.reduce((sum, exp) => sum + (exp.currency === 'JPY' ? exp.amount : 0), 0);
+  const totalTWD = expenses.reduce((sum, exp) => sum + exp.amountTWD, 0);
+
+  return (
+    <div className="pb-24 pt-6 px-4 min-h-screen">
+      <header className="mb-6 px-2">
+        <h1 className="text-3xl font-black text-primary-dark">記帳本</h1>
+        <p className="text-text-light text-sm font-bold">目前大家花了多少錢呢？</p>
+      </header>
+
+      {/* 總覽皮夾卡片 */}
+      <div className="bg-primary p-6 rounded-[2.5rem] shadow-sticker border-4 border-white/20 text-white mb-8 relative overflow-hidden">
+        {/* 裝飾背景 */}
+        <div className="absolute top-0 right-0 opacity-10 translate-x-1/4 -translate-y-1/4">
+          <FontAwesomeIcon icon={faWallet} size="10x" />
+        </div>
+        
+        <div className="relative z-10">
+          <p className="text-sm font-bold opacity-80 mb-1">總支出估算 (TWD)</p>
+          <h2 className="text-4xl font-black mb-4">${totalTWD.toLocaleString()}</h2>
+          <div className="flex gap-4 border-t border-white/20 pt-4">
+            <div>
+              <p className="text-[10px] font-bold opacity-80 uppercase">JPY Spent</p>
+              <p className="font-bold">¥{totalJPY.toLocaleString()}</p>
+            </div>
+            <div className="w-px bg-white/20"></div>
+            <div>
+              <p className="text-[10px] font-bold opacity-80 uppercase">Per Person</p>
+              <p className="font-bold">${Math.round(totalTWD / 3).toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 支出列表 */}
+      <div className="space-y-4">
+        <h3 className="font-black text-text-main ml-2 flex justify-between items-center">
+          <span>最近支出</span>
+          <FontAwesomeIcon icon={faChartLine} className="text-primary-light" />
+        </h3>
+        
+        {expenses.length === 0 ? (
+          <div className="bg-white/50 border-4 border-dashed border-sand rounded-3xl py-12 text-center text-text-light italic">
+            還沒有任何支出喔，快去購物吧！
+          </div>
+        ) : (
+          expenses.map(exp => (
+            <div key={exp.id} className="card-base flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-background flex items-center justify-center text-xl shadow-inner">
+                  {exp.category === 'food' ? '🍱' : '🛍️'}
+                </div>
+                <div>
+                  <h4 className="font-black text-text-main">{exp.title}</h4>
+                  <p className="text-[10px] text-text-light font-bold uppercase">{exp.date}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-black text-text-main text-lg leading-none">
+                  {exp.currency === 'JPY' ? `¥${exp.amount}` : `$${exp.amount}`}
+                </p>
+                {exp.currency === 'JPY' && (
+                  <p className="text-[10px] font-bold text-primary italic">≈ ${exp.amountTWD}</p>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* 懸浮按鈕 */}
+      <button 
+        onClick={() => setIsModalOpen(true)}
+        className="fixed right-6 bottom-24 w-16 h-16 bg-accent text-white rounded-full shadow-sticker flex items-center justify-center text-3xl btn-active-scale z-50"
+      >
+        <FontAwesomeIcon icon={faPlus} />
+      </button>
+
+      {isModalOpen && (
+        <AddExpenseModal 
+          onClose={() => setIsModalOpen(false)} 
+          onAdd={(data) => {
+            setExpenses([data, ...expenses]);
+            setIsModalOpen(false);
+          }} 
+        />
+      )}
+    </div>
+  );
+};

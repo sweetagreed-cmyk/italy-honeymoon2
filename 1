@@ -1,0 +1,715 @@
+tabinote-pwa/
+├── public/
+│   ├── icons/             # PWA 圖標
+│   └── textures/          # 米色格紋或紙張紋理圖案
+├── src/
+│   ├── assets/            # 靜態資源 (插畫、字體)
+│   ├── components/        # 通用 UI 組件 (Button, Card, Input)
+│   │   ├── layout/        # BottomNav, Header, ProtectedRoute
+│   │   └── shared/        # 跨頁面共用組件
+│   ├── config/            # 設定檔
+│   │   └── firebase.ts
+│   ├── features/          # 核心功能模組
+│   │   ├── schedule/      # 行程相關
+│   │   ├── bookings/      # 預訂、機票、PIN 鎖
+│   │   ├── expense/       # 記帳、匯率
+│   │   ├── journal/       # 日誌、相片
+│   │   └── planning/      # 清單、任務
+│   ├── hooks/             # 自定義 Hooks (useAuth, useFirestore)
+│   ├── store/             # Global State (Context API 或 Zustand)
+│   ├── types/             # TypeScript Interfaces
+│   ├── utils/             # 工具函式 (日期處理、匯率換算)
+│   ├── App.tsx
+│   └── main.tsx
+├── tailwind.config.js
+├── tsconfig.json
+└── vite.config.ts
+
+/** @type {import('tailwind-css').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        // 動森暖色系
+        primary: {
+          light: '#A5D6A7', // 淺綠
+          DEFAULT: '#7DA87B', // 主色綠
+          dark: '#5D8A5B',
+        },
+        accent: '#D68C45', // 溫暖橘 (按鈕或重點)
+        background: '#F7F4EB', // 米色背景
+        paper: '#FFFFFF',      // 卡片白
+        sand: '#E0E5D5',       // 陰影/邊框色
+        text: {
+          main: '#4A4A4A',     // 深灰色文字
+          light: '#8C8C8C',
+        }
+      },
+      borderRadius: {
+        'xl': '1.5rem',
+        '2xl': '2rem',
+        '3xl': '2.5rem',
+      },
+      boxShadow: {
+        // 自定義軟陰影 (Soft Shadow) 與 貼紙感陰影
+        'soft': '0 8px 30px rgba(0, 0, 0, 0.04)',
+        'sticker': '4px 4px 0px #E0E5D5', // 你要求的厚度感陰影
+      },
+      fontFamily: {
+        // 建議載入 'Kosugi Maru' 或 'Varela Round' 等圓體字
+        sans: ['"Varela Round"', 'system-ui', 'sans-serif'],
+      },
+    },
+  },
+  plugins: [],
+}
+
+import { initializeApp } from "firebase/app";
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  CACHE_SIZE_UNLIMITED,
+  enableIndexedDbPersistence 
+} from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
+
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "your-app.firebaseapp.com",
+  projectId: "your-app",
+  storageBucket: "your-app.appspot.com",
+  messagingSenderId: "...",
+  appId: "..."
+};
+
+const app = initializeApp(firebaseConfig);
+
+// 初始化 Firestore 並開啟無限快取，確保離線可用
+const db = initializeFirestore(app, {
+  cacheSizeBytes: CACHE_SIZE_UNLIMITED
+});
+
+// 啟用離線持久化 (Offline Persistence)
+if (typeof window !== "undefined") {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn("多個分頁同時開啟，離線功能僅能在第一個分頁運作");
+    } else if (err.code === 'unimplemented') {
+      console.warn("瀏覽器不支援離線功能");
+    }
+  });
+}
+
+export const auth = getAuth(app);
+export const storage = getStorage(app);
+export { db };
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  background-color: #F7F4EB;
+  color: #4A4A4A;
+}
+
+body {
+  /* 使用 CSS 繪製淡淡的點狀紋理 */
+  background-image: radial-gradient(#E0E5D5 1px, transparent 1px);
+  background-size: 20px 20px;
+  min-height: 100vh;
+  -webkit-tap-highlight-color: transparent; /* 移除手機點擊藍色高亮 */
+}
+
+/* 自定義按鈕縮放效果 */
+.btn-active-scale {
+  @apply transition-transform active:scale-95 duration-75;
+}
+
+/* 卡片基礎樣式 */
+.card-base {
+  @apply bg-white rounded-2xl shadow-sticker border-2 border-sand p-4;
+}
+
+/* 隱藏滾動條但保留功能 (用於橫向日期選擇器) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      manifest: {
+        name: 'TabiNote 旅記',
+        short_name: 'TabiNote',
+        theme_color: '#7DA87B',
+        background_color: '#F7F4EB',
+        display: 'standalone',
+        icons: [
+          {
+            src: '/icons/icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: '/icons/icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      }
+    })
+  ]
+});
+
+export type ActivityCategory = 'sightseeing' | 'food' | 'transport' | 'stay';
+
+export interface ScheduleItem {
+  id: string;
+  time: string; // e.g., "10:30"
+  title: string;
+  location: string;
+  category: ActivityCategory;
+  note?: string;
+  imageUrl?: string;
+  mapUrl?: string;
+}
+
+export interface DayPlan {
+  date: string; // ISO String "2023-12-25"
+  weather: {
+    temp: number;
+    condition: 'sunny' | 'cloudy' | 'rainy';
+  };
+  activities: ScheduleItem[];
+}
+
+import React, { useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { 
+  faSun, faCloud, faCloudRain, 
+  faUtensils, faPersonWalkingLuggage, 
+  faCar, faBed, faMapMarkerAlt 
+} from '@fortawesome/free-solid-svg-icons';
+
+// 模擬資料 (稍後會換成 Firebase)
+const MOCK_DAYS: DayPlan[] = [
+  {
+    date: '2023-12-25',
+    weather: { temp: 18, condition: 'sunny' },
+    activities: [
+      { id: '1', time: '09:00', title: '成田機場接機', location: 'Narita Terminal 1', category: 'transport' },
+      { id: '2', time: '12:30', title: '築地市場午餐', location: 'Tsukiji Market', category: 'food' },
+      { id: '3', time: '15:00', title: '淺草寺參拜', location: 'Senso-ji', category: 'sightseeing' },
+    ]
+  },
+  // ... 更多日期
+];
+
+const SchedulePage: React.FC = () => {
+  const [selectedDayIdx, setSelectedDayIdx] = useState(0);
+  const currentDay = MOCK_DAYS[selectedDayIdx];
+
+  // 倒數計時計算 (假設出發日期是 2023-12-25)
+  const daysToTrip = 5; 
+
+  const getCategoryColor = (cat: ActivityCategory) => {
+    switch(cat) {
+      case 'food': return 'bg-orange-100 text-orange-600 border-orange-200';
+      case 'transport': return 'bg-blue-100 text-blue-600 border-blue-200';
+      case 'stay': return 'bg-brown-100 text-[#8B4513] border-brown-200';
+      default: return 'bg-green-100 text-green-600 border-green-200';
+    }
+  };
+
+  const getCategoryIcon = (cat: ActivityCategory) => {
+    switch(cat) {
+      case 'food': return faUtensils;
+      case 'transport': return faCar;
+      case 'stay': return faBed;
+      default: return faPersonWalkingLuggage;
+    }
+  };
+
+  return (
+    <div className="pb-24 pt-4 px-4 min-h-screen">
+      {/* 1. Countdown Header */}
+      <div className="flex justify-between items-end mb-6">
+        <div>
+          <h2 className="text-text-light text-sm font-bold">我們的東京之旅</h2>
+          <h1 className="text-3xl font-black text-primary-dark tracking-tight">
+            還有 {daysToTrip} 天出發！
+          </h1>
+        </div>
+        <div className="w-12 h-12 bg-accent rounded-full flex items-center justify-center text-white shadow-sticker btn-active-scale">
+          <FontAwesomeIcon icon={faMapMarkerAlt} />
+        </div>
+      </div>
+
+      {/* 2. Horizontal Date Picker */}
+      <div className="flex overflow-x-auto no-scrollbar gap-3 mb-6 py-2">
+        {MOCK_DAYS.map((day, idx) => (
+          <button
+            key={day.date}
+            onClick={() => setSelectedDayIdx(idx)}
+            className={`flex-shrink-0 w-16 h-20 rounded-2xl flex flex-col items-center justify-center border-2 transition-all btn-active-scale ${
+              selectedDayIdx === idx 
+                ? 'bg-primary text-white border-primary shadow-sticker' 
+                : 'bg-white text-text-light border-sand shadow-sm'
+            }`}
+          >
+            <span className="text-xs font-bold uppercase">Day</span>
+            <span className="text-xl font-black">{idx + 1}</span>
+            <span className="text-[10px] opacity-80">{day.date.split('-')[2]}日</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 3. Weather Card */}
+      <div className="bg-white/60 backdrop-blur-sm rounded-3xl p-4 mb-8 flex items-center justify-between border-2 border-dashed border-sand">
+        <div className="flex items-center gap-4">
+          <div className="text-4xl text-yellow-500">
+            <FontAwesomeIcon icon={currentDay.weather.condition === 'sunny' ? faSun : faCloud} />
+          </div>
+          <div>
+            <p className="font-bold text-text-main">今日天氣：{currentDay.weather.condition === 'sunny' ? '晴朗' : '多雲'}</p>
+            <p className="text-xs text-text-light">預估氣溫 {currentDay.weather.temp}°C</p>
+          </div>
+        </div>
+        <div className="text-xs text-primary-dark font-bold bg-primary-light/30 px-3 py-1 rounded-full">
+          Tokyo, JP
+        </div>
+      </div>
+
+      {/* 4. Timeline List */}
+      <div className="relative">
+        {/* 貫穿中間的虛線 */}
+        <div className="absolute left-[21px] top-4 bottom-4 w-0.5 border-l-2 border-dashed border-sand"></div>
+
+        <div className="space-y-8">
+          {currentDay.activities.map((item) => (
+            <div key={item.id} className="relative flex gap-4">
+              {/* 時間點選 */}
+              <div className="z-10 w-11 h-11 rounded-full bg-white border-4 border-primary flex items-center justify-center flex-shrink-0 shadow-sm">
+                <FontAwesomeIcon icon={getCategoryIcon(item.category)} className="text-primary text-sm" />
+              </div>
+
+              {/* 行程卡片 */}
+              <div className="flex-grow group">
+                <div className="card-base btn-active-scale transition-all hover:translate-y-[-2px] cursor-pointer">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-xs font-black text-primary-dark">{item.time}</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${getCategoryColor(item.category)} font-bold`}>
+                      {item.category.toUpperCase()}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-text-main text-lg mb-1">{item.title}</h3>
+                  <div className="flex items-center text-text-light text-xs">
+                    <FontAwesomeIcon icon={faMapMarkerAlt} className="mr-1" />
+                    {item.location}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 懸浮新增按鈕 */}
+      <button className="fixed right-6 bottom-24 w-14 h-14 bg-accent text-white rounded-full shadow-sticker flex items-center justify-center text-2xl btn-active-scale z-50">
+        +
+      </button>
+    </div>
+  );
+};
+
+export default SchedulePage;
+
+import { useEffect, useState } from 'react';
+import { auth } from '../config/firebase';
+import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
+
+export const useAuth = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUser(user);
+      } else {
+        await signInAnonymously(auth);
+      }
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  return { user, loading };
+};
+
+import { 
+  collection, addDoc, query, where, onSnapshot, orderBy, Timestamp 
+} from 'firebase/firestore';
+import { db } from '../../config/firebase';
+import { ScheduleItem } from '../../types';
+
+const COLLECTION_NAME = 'activities';
+
+export const subscribeActivities = (userId: string, date: string, callback: (data: ScheduleItem[]) => void) => {
+  const q = query(
+    collection(db, COLLECTION_NAME),
+    where('userId', '==', userId),
+    where('date', '==', date),
+    orderBy('time', 'asc')
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const items = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as ScheduleItem[];
+    callback(items);
+  });
+};
+
+export const addActivity = async (userId: string, activity: Omit<ScheduleItem, 'id'>) => {
+  return await addDoc(collection(db, COLLECTION_NAME), {
+    ...activity,
+    userId,
+    createdAt: Timestamp.now()
+  });
+};
+
+import React, { useState } from 'react';
+import { ActivityCategory } from '../../types';
+
+interface Props {
+  isOpen: boolean;
+  onClose: () => void;
+  onAdd: (data: any) => void;
+  selectedDate: string;
+}
+
+const AddActivityModal: React.FC<Props> = ({ isOpen, onClose, onAdd, selectedDate }) => {
+  const [title, setTitle] = useState('');
+  const [time, setTime] = useState('12:00');
+  const [location, setLocation] = useState('');
+  const [category, setCategory] = useState<ActivityCategory>('sightseeing');
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-background w-full max-w-md rounded-[2.5rem] border-4 border-sand shadow-2xl p-8 animate-in slide-in-from-bottom duration-300">
+        <h3 className="text-2xl font-black text-primary-dark mb-6 text-center">✨ 新增行程</h3>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-text-light ml-2 mb-1">活動名稱</label>
+            <input 
+              type="text" value={title} onChange={(e) => setTitle(e.target.value)}
+              className="w-full bg-white border-2 border-sand rounded-2xl px-4 py-3 focus:outline-none focus:border-primary"
+              placeholder="要去哪裡玩？"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-text-light ml-2 mb-1">時間</label>
+              <input 
+                type="time" value={time} onChange={(e) => setTime(e.target.value)}
+                className="w-full bg-white border-2 border-sand rounded-2xl px-4 py-3 focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-text-light ml-2 mb-1">類別</label>
+              <select 
+                value={category} onChange={(e) => setCategory(e.target.value as ActivityCategory)}
+                className="w-full bg-white border-2 border-sand rounded-2xl px-4 py-3 focus:outline-none focus:border-primary appearance-none"
+              >
+                <option value="sightseeing">景点</option>
+                <option value="food">美食</option>
+                <option value="transport">交通</option>
+                <option value="stay">住宿</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-text-light ml-2 mb-1">地點</label>
+            <input 
+              type="text" value={location} onChange={(e) => setLocation(e.target.value)}
+              className="w-full bg-white border-2 border-sand rounded-2xl px-4 py-3 focus:outline-none focus:border-primary"
+              placeholder="具體地址或名稱"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-4 mt-8">
+          <button 
+            onClick={onClose}
+            className="flex-1 py-4 rounded-2xl font-bold text-text-light bg-sand/50 btn-active-scale"
+          >
+            取消
+          </button>
+          <button 
+            onClick={() => onAdd({ title, time, location, category, date: selectedDate })}
+            className="flex-1 py-4 rounded-2xl font-bold text-white bg-primary shadow-sticker btn-active-scale"
+          >
+            準備好了！
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ... (之前的 imports)
+import { useAuth } from '../../hooks/useAuth';
+import { subscribeActivities, addActivity } from './scheduleService';
+import AddActivityModal from './AddActivityModal';
+
+const SchedulePage: React.FC = () => {
+  const { user } = useAuth();
+  const [selectedDayIdx, setSelectedDayIdx] = useState(0);
+  const [activities, setActivities] = useState<ScheduleItem[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // 假設行程日期清單
+  const dates = ['2023-12-25', '2023-12-26', '2023-12-27'];
+  const currentDate = dates[selectedDayIdx];
+
+  // 實時監聽資料庫
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = subscribeActivities(user.uid, currentDate, (data) => {
+      setActivities(data);
+    });
+    return () => unsubscribe();
+  }, [user, currentDate]);
+
+  const handleAddActivity = async (data: any) => {
+    if (!user) return;
+    try {
+      await addActivity(user.uid, data);
+      setIsModalOpen(false);
+    } catch (e) {
+      alert("儲存失敗，請檢查網路連線");
+    }
+  };
+
+  return (
+    <div className="pb-24 pt-4 px-4 min-h-screen">
+      {/* ... Countdown Header & Horizontal Date Picker ... */}
+      {/* (DatePicker 點擊時會更新 selectedDayIdx, 進而觸發 useEffect 重新抓資料) */}
+
+      {/* Timeline List */}
+      <div className="relative mt-8">
+        <div className="absolute left-[21px] top-4 bottom-4 w-0.5 border-l-2 border-dashed border-sand"></div>
+        {activities.length === 0 ? (
+          <div className="text-center py-12 text-text-light italic">
+            這天還沒有行程，點擊下方 + 開始規劃吧！
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {activities.map((item) => (
+              <TimelineItem key={item.id} item={item} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 懸浮新增按鈕 */}
+      <button 
+        onClick={() => setIsModalOpen(true)}
+        className="fixed right-6 bottom-24 w-14 h-14 bg-accent text-white rounded-full shadow-sticker flex items-center justify-center text-2xl btn-active-scale z-50"
+      >
+        +
+      </button>
+
+      <AddActivityModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)}
+        onAdd={handleAddActivity}
+        selectedDate={currentDate}
+      />
+    </div>
+  );
+};
+
+import imageCompression from 'browser-image-compression';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../config/firebase';
+
+export const uploadActivityImage = async (activityId: string, file: File) => {
+  // 1. 壓縮圖片
+  const options = {
+    maxSizeMB: 0.8,
+    maxWidthOrHeight: 1200,
+    useWebWorker: true,
+  };
+  
+  const compressedFile = await imageCompression(file, options);
+
+  // 2. 上傳至 Firebase Storage
+  const storageRef = ref(storage, `activities/${activityId}/${Date.now()}_${file.name}`);
+  const snapshot = await uploadBytes(storageRef, compressedFile);
+  
+  // 3. 取得公開 URL
+  return await getDownloadURL(snapshot.ref);
+};
+
+// 在 src/features/schedule/scheduleService.ts 增加：
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+
+export const updateActivityDetails = async (id: string, updates: any) => {
+  const docRef = doc(db, 'activities', id);
+  return await updateDoc(docRef, updates);
+};
+
+export const addImageToActivity = async (id: string, imageUrl: string) => {
+  const docRef = doc(db, 'activities', id);
+  return await updateDoc(docRef, {
+    images: arrayUnion(imageUrl)
+  });
+};
+
+import React, { useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faMapMarkerAlt, faStickyNote, faCamera, faTimes, faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
+import { ScheduleItem } from '../../types';
+import { addImageToActivity, updateActivityDetails } from './scheduleService';
+import { uploadActivityImage } from '../../utils/imageUpload';
+
+interface Props {
+  item: ScheduleItem & { images?: string[]; note?: string };
+  onClose: () => void;
+}
+
+const ActivityDetailModal: React.FC<Props> = ({ item, onClose }) => {
+  const [isUploading, setIsUploading] = useState(false);
+  const [note, setNote] = useState(item.note || '');
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setIsUploading(true);
+      try {
+        const url = await uploadActivityImage(item.id, e.target.files[0]);
+        await addImageToActivity(item.id, url);
+      } catch (err) {
+        alert("上傳失敗");
+      } finally {
+        setIsUploading(false);
+      }
+    }
+  };
+
+  const handleSaveNote = async () => {
+    await updateActivityDetails(item.id, { note });
+    alert("備註已儲存！");
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-background flex flex-col animate-in fade-in duration-200">
+      {/* 頂部導航 */}
+      <div className="p-4 flex items-center justify-between border-b border-sand">
+        <button onClick={onClose} className="w-10 h-10 flex items-center justify-center text-text-light">
+          <FontAwesomeIcon icon={faTimes} size="lg" />
+        </button>
+        <span className="font-black text-primary-dark">行程詳情</span>
+        <div className="w-10"></div> {/* 佔位 */}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-8">
+        {/* 核心資訊 */}
+        <section>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="bg-primary text-white px-3 py-1 rounded-full text-xs font-bold">{item.time}</span>
+            <span className="text-text-light font-bold text-sm tracking-widest">{item.category.toUpperCase()}</span>
+          </div>
+          <h2 className="text-3xl font-black text-text-main mb-4">{item.title}</h2>
+          
+          <div className="flex items-center justify-between p-4 bg-white border-2 border-sand rounded-2xl shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center">
+                <FontAwesomeIcon icon={faMapMarkerAlt} />
+              </div>
+              <span className="text-sm font-bold text-text-main">{item.location}</span>
+            </div>
+            <a 
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`}
+              target="_blank" rel="noreferrer"
+              className="text-primary hover:scale-110 transition-transform"
+            >
+              <FontAwesomeIcon icon={faExternalLinkAlt} />
+            </a>
+          </div>
+        </section>
+
+        {/* 相簿區 - 拍立得風格 */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-black text-lg flex items-center gap-2">
+              <FontAwesomeIcon icon={faCamera} className="text-accent" /> 旅途回憶
+            </h3>
+            <label className="cursor-pointer bg-accent text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sticker btn-active-scale">
+              {isUploading ? "上傳中..." : "新增照片"}
+              <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} disabled={isUploading} />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {item.images?.map((url, idx) => (
+              <div key={idx} className="bg-white p-2 pb-6 shadow-sticker border border-sand -rotate-2 hover:rotate-0 transition-transform">
+                <img src={url} alt="Memory" className="w-full h-32 object-cover mb-2" />
+                <div className="h-2 w-1/2 bg-sand/30 rounded"></div> {/* 裝飾用的留白 */}
+              </div>
+            ))}
+            {(!item.images || item.images.length === 0) && (
+              <div className="col-span-2 py-10 border-4 border-dashed border-sand rounded-3xl text-center text-text-light italic text-sm">
+                點擊上方按鈕，留下第一張照片吧！
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* 備註區 */}
+        <section>
+          <h3 className="font-black text-lg mb-4 flex items-center gap-2">
+            <FontAwesomeIcon icon={faStickyNote} className="text-yellow-600" /> 筆記備註
+          </h3>
+          <textarea 
+            className="w-full h-32 p-4 bg-[#FFFCEB] border-2 border-[#E8E0C5] rounded-2xl focus:outline-none text-text-main"
+            placeholder="記錄一些小提醒或是心情..."
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button 
+            onClick={handleSaveNote}
+            className="mt-2 w-full py-3 bg-primary text-white font-bold rounded-2xl shadow-sticker btn-active-scale"
+          >
+            儲存筆記
+          </button>
+        </section>
+      </div>
+    </div>
+  );
+};
+
